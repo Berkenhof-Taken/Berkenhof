@@ -1,34 +1,13 @@
-name: Berkenhof Weeklijst Update
-
-on:
-  schedule:
-    - cron: '0 18 * * 5'
-  workflow_dispatch:
-
-jobs:
-  generate-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Genereer weeklijst HTML
-        run: node generate.js
-
-      - name: Upload naar Netlify
+- name: Upload naar Netlify
         env:
           NETLIFY_TOKEN: ${{ secrets.NETLIFY_TOKEN }}
           NETLIFY_SITE: subtle-marigold-afed41
         run: |
           zip -j deploy.zip berkenhof_taken.html
-          curl -s -X POST \
+          echo "Zip aangemaakt"
+          RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" -X POST \
             -H "Authorization: Bearer $NETLIFY_TOKEN" \
             -H "Content-Type: application/zip" \
             --data-binary @deploy.zip \
-            "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE/deploys"
-          echo "Upload voltooid!"
+            "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE/deploys")
+          echo "Netlify antwoord: $RESPONSE"
