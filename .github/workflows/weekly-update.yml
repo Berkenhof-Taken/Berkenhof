@@ -24,7 +24,7 @@ jobs:
       - name: Upload naar Netlify
         env:
           NETLIFY_TOKEN: ${{ secrets.NETLIFY_TOKEN }}
-          NETLIFY_SITE: subtle-marigold-afed41
+          NETLIFY_SITE: 7d056645-a076-4fe9-b097-886d0940b408
         run: |
           zip -j deploy.zip berkenhof_taken.html
           RESP=$(curl -s -o /tmp/netlify.json -w "%{http_code}" -X POST \
