@@ -1,10 +1,12 @@
-
 name: Berkenhof Weeklijst Update
 
 on:
   schedule:
     - cron: '0 18 * * 5'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   generate-and-deploy:
@@ -21,16 +23,10 @@ jobs:
       - name: Genereer weeklijst HTML
         run: node generate.js
 
-      - name: Upload naar Netlify
-        env:
-          NETLIFY_TOKEN: ${{ secrets.NETLIFY_TOKEN }}
-          NETLIFY_SITE: 7d056645-a076-4fe9-b097-886d0940b408
+      - name: Publiceer naar GitHub Pages
         run: |
-          zip -j deploy.zip berkenhof_taken.html
-          RESP=$(curl -s -o /tmp/netlify.json -w "%{http_code}" -X POST \
-            -H "Authorization: Bearer $NETLIFY_TOKEN" \
-            -H "Content-Type: application/zip" \
-            --data-binary @deploy.zip \
-            "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE/deploys")
-          echo "HTTP status: $RESP"
-          cat /tmp/netlify.json
+          git config --global user.email "facility@berkenhof.be"
+          git config --global user.name "Berkenhof Weeklijst"
+          git add berkenhof_taken.html
+          git diff --staged --quiet || git commit -m "Weeklijst update $(date +'%Y-%m-%d')"
+          git push
