@@ -4,7 +4,7 @@
 const fs = require('fs');
 
 const NOTION_TOKEN = process.env.NOTION_TOKEN;
-const DATABASE_ID  = '3bcd33c3-2acc-82b4-850a-01c2b99e8df0';
+const DATABASE_ID  = '469d33c3-2acc-8347-8355-87a549f4ed30';
 
 // ── ISO weeknummer ───────────────────────────────────────────────
 function getISOWeek(d) {
@@ -127,9 +127,24 @@ function parsePage(page) {
 
 // ── HTML helpers ─────────────────────────────────────────────────
 const CB = '<svg viewBox="0 0 26 26" width="26" height="26"><circle class="cb-c" cx="13" cy="13" r="11"/><circle class="cb-b" cx="13" cy="13" r="11"/><polyline class="cb-k" points="7,13 11,17 19,9"/></svg>';
+
+function esc(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/`/g, '&#96;')
+    .replace(/\$/g, '&#36;')
+    .replace(/\n/g, ' | ')
+    .trim();
+}
+
 function T(name, inst) {
-  const i = inst ? `<div class="ti">&rarr; ${inst}</div>` : '';
-  return `<div class="ti-w" onclick="T(this)"><div class="cb">${CB}</div><div class="tt"><div class="tn">${name}</div>${i}</div></div>`;
+  const i = inst ? `<div class="ti">&rarr; ${esc(inst)}</div>` : '';
+  return `<div class="ti-w" onclick="T(this)"><div class="cb">${CB}</div><div class="tt"><div class="tn">${esc(name)}</div>${i}</div></div>`;
 }
 function L(txt, bg) { return `<div class="sl" style="background:${bg};color:#fff">${txt}</div>`; }
 
