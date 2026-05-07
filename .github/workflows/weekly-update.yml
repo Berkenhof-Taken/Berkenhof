@@ -2,7 +2,7 @@ name: Berkenhof Weeklijst Update
 
 on:
   schedule:
-    - cron: '0 18 * * 5'
+    - cron: '0 6 * * 1-5'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +20,9 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Genereer weeklijst HTML
+      - name: Genereer weeklijst vanuit Notion
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
         run: node generate.js
 
       - name: Publiceer naar GitHub Pages
