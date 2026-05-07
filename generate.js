@@ -4,7 +4,7 @@
 const fs = require('fs');
 
 const NOTION_TOKEN = process.env.NOTION_TOKEN;
-const DATABASE_ID  = '469d33c3-2acc-8347-8355-87a549f4ed30';
+const DATABASE_ID  = '3bcd33c3-2acc-82b4-850a-01c2b99e8df0';
 
 // ── ISO weeknummer ───────────────────────────────────────────────
 function getISOWeek(d) {
