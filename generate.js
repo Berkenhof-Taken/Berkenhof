@@ -206,7 +206,10 @@ async function main() {
 
       dagHTML += `<div class="dc"><div class="dh" style="background:${kl.h}" onclick="toggleDay(this)"><h2>${dag.l}</h2><span class="db-badge" id="b-${naam}-${dag.k}">0/0</span></div><div${col} id="d-${naam}-${dag.k}">${inner}</div></div>`;
     }
-    if (!dagHTML) continue;
+    // Altijd een weergave aanmaken, ook als er geen taken zijn (anders crasht de tab-navigatie)
+    if (!dagHTML) {
+      dagHTML = `<div class="dc"><div class="dh" style="background:${kl.h}"><h2>Geen taken deze week</h2></div><div class="db"><div class="ed">Geen taken gepland voor deze week.</div></div></div>`;
+    }
 
     const active = naam === 'Rita' ? ' active' : '';
     personen += `<div class="pv${active}" id="v-${naam}" data-p="${naam}"><div class="pw"><div class="pt-info"><span style="color:${kl.h};font-weight:700">${disp}</span><span class="pc" id="prog-${naam}">0/0</span></div><div class="pb-bg"><div class="pb-fill" id="bar-${naam}" style="background:${kl.h};width:0%"></div></div></div>${dagHTML}<button class="rb" style="background:${kl.h}" onclick="Reset('${naam}')">&#8635; Nieuwe week starten</button></div>`;
