@@ -43,7 +43,6 @@ function isActief(freq, start, targetWeek) {
 
 // ── Huidige werkweek berekenen ───────────────────────────────────
 const today = new Date(); today.setHours(0,0,0,0);
-const IS_MONDAY = today.getDay() === 1;
 const dow   = today.getDay();
 let ma;
 if (dow === 0) { ma = new Date(today); ma.setDate(today.getDate() + 1); }
@@ -113,52 +112,16 @@ async function queryNotion() {
   return results;
 }
 
-// ── Maandag: reset alle Voltooid-vlaggen in Notion ───────────────
-async function resetWeekIfMonday(pages) {
-  if (!IS_MONDAY) return;
-  const toReset = pages.filter(p => p.properties.Voltooid && p.properties.Voltooid.checkbox === true);
-  if (!toReset.length) {
-    console.log('Maandag: alle Voltooid-vlaggen staan al op false.');
-    return;
-  }
-  console.log(`Maandag: ${toReset.length} Voltooid-vlaggen resetten naar false...`);
-  for (const page of toReset) {
-    try {
-      const r = await fetch(`https://api.notion.com/v1/pages/${page.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${NOTION_TOKEN}`,
-          'Notion-Version': '2022-06-28',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ properties: { Voltooid: { checkbox: false } } })
-      });
-      if (!r.ok) {
-        const e = await r.text();
-        console.error(`Reset fout ${page.id}: ${r.status} ${e}`);
-      }
-    } catch(e) {
-      console.error(`Reset fout ${page.id}:`, e.message);
-    }
-    // Notion rate limit: max 3 req/sec
-    await new Promise(res => setTimeout(res, 350));
-  }
-  console.log('Voltooid-reset klaar.');
-}
-
 // ── Parse Notion pagina ──────────────────────────────────────────
 function parsePage(page) {
   const p = page.properties;
   return {
-    id:       page.id,
-    taak:     (p.Taak?.title || []).map(r => r.plain_text).join(''),
-    person:   p.Verantwoordelijke?.select?.name || '',
-    weekdag:  (p.Weekdag?.multi_select || []).map(w => w.name),
-    freq:     p.frequentie?.select?.name || '',
-    start:    p.Startdatum?.date?.start || '',
-    inst:     (p.instructie?.rich_text || []).map(r => r.plain_text).join(''),
-    // Op maandag starten alle taken als niet-afgevinkt (net gereset)
-    voltooid: IS_MONDAY ? false : (p.Voltooid?.checkbox || false)
+    taak:    (p.Taak?.title || []).map(r => r.plain_text).join(''),
+    person:  p.Verantwoordelijke?.select?.name || '',
+    weekdag: (p.Weekdag?.multi_select || []).map(w => w.name),
+    freq:    p.frequentie?.select?.name || '',
+    start:   p.Startdatum?.date?.start || '',
+    inst:    (p.instructie?.rich_text || []).map(r => r.plain_text).join('')
   };
 }
 
@@ -176,28 +139,19 @@ function esc(s) {
     .replace(/`/g, '&#96;')
     .replace(/\$/g, '&#36;')
     .replace(/\n/g, ' | ')
-    .replace(/\r/g, '')
-    .replace(/\xa0/g, ' ')
     .trim();
 }
 
-// T() bouwt een taak-rij; onclick="TK(this)" roept client-side TK aan
-function T(name, inst, pageId, voltooid) {
+function T(name, inst) {
   const i = inst ? `<div class="ti">&rarr; ${esc(inst)}</div>` : '';
-  const doneClass = voltooid ? ' done' : '';
-  const idAttr   = pageId ? ` data-id="${pageId}"` : '';
-  return `<div class="ti-w${doneClass}" onclick="TK(this)"${idAttr}><div class="cb">${CB}</div><div class="tt"><div class="tn">${esc(name)}</div>${i}</div></div>`;
+  return `<div class="ti-w" onclick="T(this)"><div class="cb">${CB}</div><div class="tt"><div class="tn">${esc(name)}</div>${i}</div></div>`;
 }
 function L(txt, bg) { return `<div class="sl" style="background:${bg};color:#fff">${txt}</div>`; }
 
 // ── Hoofd ────────────────────────────────────────────────────────
 async function main() {
-  const pages = await queryNotion();
-
-  // Op maandag: vorige week-vinkjes wissen in Notion
-  await resetWeekIfMonday(pages);
-
-  const tasks = pages.map(parsePage).filter(t => t.taak && t.person);
+  const pages   = await queryNotion();
+  const tasks   = pages.map(parsePage).filter(t => t.taak && t.person);
 
   // Organiseer per persoon
   const data = {};
@@ -213,7 +167,7 @@ async function main() {
 
     // Dagelijks / elke weekdag
     if (t.weekdag.includes('elke weekdag') || t.freq === 'dagelijks') {
-      data[naam].daily.push({t: t.taak, i: t.inst, id: t.id, v: t.voltooid});
+      data[naam].daily.push({t: t.taak, i: t.inst});
       continue;
     }
 
@@ -222,7 +176,7 @@ async function main() {
       const k = DAGMAP[wd];
       if (!k) continue;
       if (isActief(t.freq, t.start, week)) {
-        data[naam].dag[k].push({t: t.taak, i: t.inst, id: t.id, v: t.voltooid});
+        data[naam].dag[k].push({t: t.taak, i: t.inst});
       }
     }
   }
@@ -246,13 +200,13 @@ async function main() {
       const col = first ? '' : ' class="collapsed"';
       first = false;
       let inner = '';
-      if (p.daily.length)  inner += L('DAGELIJKSE TAKEN', kl.dl) + p.daily.map(t=>T(t.t, t.i, t.id, t.v)).join('');
-      if (dagTaken.length) inner += L(`EXTRA ${dag.l.toUpperCase()}`, kl.d) + dagTaken.map(t=>T(t.t, t.i, t.id, t.v)).join('');
+      if (p.daily.length) inner += L('DAGELIJKSE TAKEN', kl.dl) + p.daily.map(t=>T(t.t,t.i)).join('');
+      if (dagTaken.length) inner += L(`EXTRA ${dag.l.toUpperCase()}`, kl.d) + dagTaken.map(t=>T(t.t,t.i)).join('');
       if (!inner) continue;
 
       dagHTML += `<div class="dc"><div class="dh" style="background:${kl.h}" onclick="toggleDay(this)"><h2>${dag.l}</h2><span class="db-badge" id="b-${naam}-${dag.k}">0/0</span></div><div${col} id="d-${naam}-${dag.k}">${inner}</div></div>`;
     }
-    // Altijd een weergave aanmaken (anders crasht de tab-navigatie)
+    // Altijd een weergave aanmaken, ook als er geen taken zijn (anders crasht de tab-navigatie)
     if (!dagHTML) {
       dagHTML = `<div class="dc"><div class="dh" style="background:${kl.h}"><h2>Geen taken deze week</h2></div><div class="db"><div class="ed">Geen taken gepland voor deze week.</div></div></div>`;
     }
@@ -266,98 +220,11 @@ async function main() {
     `<div class="pt${i===0?' active':''}" data-p="${n}">${DISPLAY[n]}</div>`
   ).join('');
 
-  // ── CSS ──────────────────────────────────────────────────────────
-  const CSS = `*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}body{font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;background:#F0F2F5}.ah{background:#1C2833;color:#fff;padding:14px 20px 0;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.25)}.ah-top{display:flex;justify-content:space-between;align-items:center}.ah h1{font-size:19px;font-weight:700}.ah p{font-size:12px;opacity:.65;margin-top:2px}.rfb{background:rgba(255,255,255,.12);border:none;color:rgba(255,255,255,.8);font-size:13px;padding:5px 12px;border-radius:14px;cursor:pointer;white-space:nowrap}.rfb:active{background:rgba(255,255,255,.25)}.pt-wrap{display:flex;overflow-x:auto;scrollbar-width:none;margin-top:10px}.pt-wrap::-webkit-scrollbar{display:none}.pt{flex:1;min-width:70px;padding:9px 6px 7px;text-align:center;font-size:13px;font-weight:600;color:rgba(255,255,255,.5);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:all .2s;user-select:none}.pt.active{color:#fff;border-bottom-color:#fff}.cnt{max-width:700px;margin:0 auto;padding:14px 12px 80px}.pv{display:none}.pv.active{display:block}.pw{background:#fff;border-radius:12px;padding:12px 16px;margin-bottom:12px;box-shadow:0 2px 10px rgba(0,0,0,.1)}.pt-info{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;font-size:14px}.pb-bg{background:#E8E8E8;border-radius:6px;height:7px}.pb-fill{height:7px;border-radius:6px;transition:width .4s}.pc{font-size:13px;color:#666;font-weight:400}.dc{background:#fff;border-radius:12px;margin-bottom:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.1)}.dh{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;cursor:pointer;user-select:none}.dh h2{font-size:15px;font-weight:700;color:#fff}.db-badge{font-size:12px;color:rgba(255,255,255,.85);background:rgba(255,255,255,.2);border-radius:10px;padding:2px 9px}.collapsed{display:none}.sl{font-size:11px;font-weight:700;letter-spacing:.7px;padding:6px 16px;text-transform:uppercase}.ti-w{display:flex;align-items:flex-start;padding:11px 16px;gap:13px;cursor:pointer;border-bottom:1px solid #F5F5F5;min-height:50px;transition:background .15s}.ti-w:last-child{border-bottom:none}.ti-w.done{background:#F0FFF4}.ti-w.done .tn{color:#AAA;text-decoration:line-through}.cb{width:26px;height:26px;flex-shrink:0;margin-top:1px}.cb-c{fill:none;stroke:#CCC;stroke-width:2}.cb-b{fill:#CCC;opacity:0;transition:all .2s}.cb-k{fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity .2s}.ti-w.done .cb-c{stroke:#2ECC71}.ti-w.done .cb-b{fill:#2ECC71;opacity:1}.ti-w.done .cb-k{opacity:1}.tt{flex:1}.tn{font-size:15px;line-height:1.35;color:#1A1A1A}.ti{font-size:12px;color:#777;font-style:italic;margin-top:3px}.db,.ed{padding:14px 16px;font-size:13px;color:#BBB;font-style:italic}.rb{display:block;width:calc(100% - 24px);margin:4px 12px 0;padding:13px;border:none;border-radius:12px;font-size:15px;font-weight:600;color:#fff;cursor:pointer;opacity:.85}.rb:active{opacity:1}.si{position:fixed;bottom:22px;right:16px;background:rgba(28,40,51,.85);color:#fff;font-size:12px;padding:6px 14px;border-radius:20px;display:none;z-index:200;pointer-events:none;backdrop-filter:blur(4px)}.si.v{display:block}`;
+  const CSS = `*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}body{font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;background:#F0F2F5}.ah{background:#1C2833;color:#fff;padding:14px 20px 0;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.25)}.ah h1{font-size:19px;font-weight:700}.ah p{font-size:12px;opacity:.65;margin-top:2px}.pt-wrap{display:flex;overflow-x:auto;scrollbar-width:none;margin-top:10px}.pt-wrap::-webkit-scrollbar{display:none}.pt{flex:1;min-width:70px;padding:9px 6px 7px;text-align:center;font-size:13px;font-weight:600;color:rgba(255,255,255,.5);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:all .2s;user-select:none}.pt.active{color:#fff;border-bottom-color:#fff}.cnt{max-width:700px;margin:0 auto;padding:14px 12px 80px}.pv{display:none}.pv.active{display:block}.pw{background:#fff;border-radius:12px;padding:12px 16px;margin-bottom:12px;box-shadow:0 2px 10px rgba(0,0,0,.1)}.pt-info{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;font-size:14px}.pb-bg{background:#E8E8E8;border-radius:6px;height:7px}.pb-fill{height:7px;border-radius:6px;transition:width .4s}.pc{font-size:13px;color:#666;font-weight:400}.dc{background:#fff;border-radius:12px;margin-bottom:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.1)}.dh{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;cursor:pointer;user-select:none}.dh h2{font-size:15px;font-weight:700;color:#fff}.db-badge{font-size:12px;color:rgba(255,255,255,.85);background:rgba(255,255,255,.2);border-radius:10px;padding:2px 9px}.collapsed{display:none}.sl{font-size:11px;font-weight:700;letter-spacing:.7px;padding:6px 16px;text-transform:uppercase}.ti-w{display:flex;align-items:flex-start;padding:11px 16px;gap:13px;cursor:pointer;border-bottom:1px solid #F5F5F5;min-height:50px;transition:background .15s}.ti-w:last-child{border-bottom:none}.ti-w.done{background:#F0FFF4}.ti-w.done .tn{color:#AAA;text-decoration:line-through}.cb{width:26px;height:26px;flex-shrink:0;margin-top:1px}.cb-c{fill:none;stroke:#CCC;stroke-width:2}.cb-b{fill:#CCC;opacity:0;transition:all .2s}.cb-k{fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity .2s}.ti-w.done .cb-c{stroke:#2ECC71}.ti-w.done .cb-b{fill:#2ECC71;opacity:1}.ti-w.done .cb-k{opacity:1}.tt{flex:1}.tn{font-size:15px;line-height:1.35;color:#1A1A1A}.ti{font-size:12px;color:#777;font-style:italic;margin-top:3px}.db,.ed{padding:14px 16px;font-size:13px;color:#BBB;font-style:italic}.rb{display:block;width:calc(100% - 24px);margin:4px 12px 0;padding:13px;border:none;border-radius:12px;font-size:15px;font-weight:600;color:#fff;cursor:pointer;opacity:.85}.rb:active{opacity:1}`;
 
-  // ── Client-side JavaScript ────────────────────────────────────────
-  // NT en DB worden veilig ingebed via JSON.stringify
-  const JS = `var cP='Rita';` +
-    `var NT=${JSON.stringify(NOTION_TOKEN)};` +
-    `var DB=${JSON.stringify(DATABASE_ID)};` +
-    `var VOLGORDE=${JSON.stringify(VOLGORDE)};` +
+  const JS = `var cP='Rita';function T(el){el.classList.toggle('done');UP(cP);UB(cP)}function toggleDay(h){h.nextElementSibling.classList.toggle('collapsed')}function Reset(p){document.querySelectorAll('#v-'+p+' .ti-w').forEach(function(t){t.classList.remove('done')});UP(p);UB(p)}function UP(p){var v=document.getElementById('v-'+p),a=v.querySelectorAll('.ti-w'),d=v.querySelectorAll('.ti-w.done'),pct=a.length?Math.round(d.length/a.length*100):0;document.getElementById('bar-'+p).style.width=pct+'%';document.getElementById('prog-'+p).textContent=d.length+'/'+a.length}function UB(p){document.querySelectorAll('#v-'+p+' [id^="b-'+p+'"]').forEach(function(b){var day=b.id.split('-').pop(),body=document.getElementById('d-'+p+'-'+day);if(!body)return;var a=body.querySelectorAll('.ti-w'),d=body.querySelectorAll('.ti-w.done');b.textContent=d.length+'/'+a.length;b.style.background=d.length===a.length&&a.length>0?'rgba(46,204,113,.7)':'rgba(255,255,255,.2)'})}document.querySelector('.pt-wrap').addEventListener('click',function(e){var t=e.target.closest('.pt');if(!t)return;cP=t.dataset.p;document.querySelectorAll('.pt').forEach(function(x){x.classList.remove('active')});document.querySelectorAll('.pv').forEach(function(x){x.classList.remove('active')});t.classList.add('active');document.getElementById('v-'+cP).classList.add('active')});${VOLGORDE.map(p=>`UP('${p}');UB('${p}');`).join('')}`;
 
-    // TK: toggle taak + sync naar Notion
-    `function TK(el){el.classList.toggle('done');var d=el.classList.contains('done');var id=el.dataset.id;if(id)pN(id,d);UP(cP);UB(cP)}` +
-
-    // pN: PATCH Notion pagina met Voltooid-waarde
-    `function pN(pid,done){` +
-      `var si=document.getElementById('si');` +
-      `si.classList.add('v');clearTimeout(si._t);si._t=setTimeout(function(){si.classList.remove('v');},1800);` +
-      `fetch('https://api.notion.com/v1/pages/'+pid,{` +
-        `method:'PATCH',` +
-        `headers:{'Authorization':'Bearer '+NT,'Notion-Version':'2022-06-28','Content-Type':'application/json'},` +
-        `body:JSON.stringify({properties:{Voltooid:{checkbox:done}}})` +
-      `}).catch(function(){});` +
-    `}` +
-
-    // loadState: haal actuele Voltooid-status op uit Notion (voor beheerder-view)
-    `function loadState(){` +
-      `fetch('https://api.notion.com/v1/databases/'+DB+'/query',{` +
-        `method:'POST',` +
-        `headers:{'Authorization':'Bearer '+NT,'Notion-Version':'2022-06-28','Content-Type':'application/json'},` +
-        `body:JSON.stringify({filter:{property:'Voltooid',checkbox:{equals:true}},page_size:100})` +
-      `}).then(function(r){return r.json();})` +
-      `.then(function(data){` +
-        `if(!data.results)return;` +
-        `data.results.forEach(function(p){` +
-          `var el=document.querySelector('[data-id="'+p.id+'"]');` +
-          `if(el&&!el.classList.contains('done'))el.classList.add('done');` +
-        `});` +
-        `VOLGORDE.forEach(function(p){UP(p);UB(p);});` +
-      `}).catch(function(){});` +
-    `}` +
-
-    `function toggleDay(h){h.nextElementSibling.classList.toggle('collapsed')}` +
-
-    // Reset: verwijder alle vinkjes voor persoon p, zet Notion ook terug
-    `function Reset(p){` +
-      `document.querySelectorAll('#v-'+p+' .ti-w').forEach(function(t){` +
-        `if(t.classList.contains('done')){` +
-          `t.classList.remove('done');` +
-          `var id=t.dataset.id;if(id)pN(id,false);` +
-        `}` +
-      `});` +
-      `UP(p);UB(p);` +
-    `}` +
-
-    `function UP(p){var v=document.getElementById('v-'+p),a=v.querySelectorAll('.ti-w'),d=v.querySelectorAll('.ti-w.done'),pct=a.length?Math.round(d.length/a.length*100):0;document.getElementById('bar-'+p).style.width=pct+'%';document.getElementById('prog-'+p).textContent=d.length+'/'+a.length}` +
-    `function UB(p){document.querySelectorAll('#v-'+p+' [id^="b-'+p+'"]').forEach(function(b){var day=b.id.split('-').pop(),body=document.getElementById('d-'+p+'-'+day);if(!body)return;var a=body.querySelectorAll('.ti-w'),d=body.querySelectorAll('.ti-w.done');b.textContent=d.length+'/'+a.length;b.style.background=d.length===a.length&&a.length>0?'rgba(46,204,113,.7)':'rgba(255,255,255,.2)'})}` +
-
-    // Tab-navigatie
-    `document.querySelector('.pt-wrap').addEventListener('click',function(e){var t=e.target.closest('.pt');if(!t)return;cP=t.dataset.p;document.querySelectorAll('.pt').forEach(function(x){x.classList.remove('active')});document.querySelectorAll('.pv').forEach(function(x){x.classList.remove('active')});t.classList.add('active');document.getElementById('v-'+cP).classList.add('active')});` +
-
-    // Initialiseer voortgangsbalken
-    `${VOLGORDE.map(p=>`UP(${JSON.stringify(p)});UB(${JSON.stringify(p)});`).join('')}`;
-
-  // ── PIN overlay ──────────────────────────────────────────────────
-  // Na succesvolle PIN → loadState() voor actuele Notion-status
-  const PIN_JS = `(function(){var PIN='3360';` +
-    // Al ingelogd in deze sessie: laad meteen de actuele Notion-status
-    `if(sessionStorage.getItem('bk_auth')==='1'){` +
-      `setTimeout(function(){if(typeof loadState==='function')loadState();},0);` +
-      `return;` +
-    `}` +
-    `var ov=document.createElement('div');ov.id='pin-overlay';` +
-    `ov.innerHTML='<div id="pin-box"><div id="pin-logo">&#127968;</div><div id="pin-title">Berkenhof</div><div id="pin-sub">Voer de pincode in</div><div id="pin-dots"><span></span><span></span><span></span><span></span></div><div id="pin-err"></div><div id="pin-grid"><button onclick="pk(1)">1</button><button onclick="pk(2)">2</button><button onclick="pk(3)">3</button><button onclick="pk(4)">4</button><button onclick="pk(5)">5</button><button onclick="pk(6)">6</button><button onclick="pk(7)">7</button><button onclick="pk(8)">8</button><button onclick="pk(9)">9</button><button onclick="pk(11)">&#9003;</button><button onclick="pk(0)">0</button><button onclick="pk(12)">OK</button></div></div>';` +
-    `ov.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:#1C2833;display:flex;align-items:center;justify-content:center;z-index:9999';` +
-    `document.head.insertAdjacentHTML('beforeend','<style>#pin-box{background:#253341;border-radius:20px;padding:36px 28px;text-align:center;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.4)}#pin-logo{font-size:48px;margin-bottom:8px}#pin-title{color:#fff;font-size:22px;font-weight:700;font-family:-apple-system,Arial,sans-serif}#pin-sub{color:rgba(255,255,255,.5);font-size:14px;margin:6px 0 20px;font-family:-apple-system,Arial,sans-serif}#pin-dots{display:flex;justify-content:center;gap:14px;margin-bottom:20px}#pin-dots span{width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.2);transition:background .2s}#pin-dots span.filled{background:#5DADE2}#pin-err{color:#E74C3C;font-size:13px;height:18px;margin-bottom:8px;font-family:-apple-system,Arial,sans-serif}#pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}#pin-grid button{background:rgba(255,255,255,.1);border:none;border-radius:12px;color:#fff;font-size:20px;font-weight:600;padding:16px;cursor:pointer;font-family:-apple-system,Arial,sans-serif;transition:background .15s}#pin-grid button:active{background:rgba(255,255,255,.25)}</style>');` +
-    `document.body.appendChild(ov);` +
-    `var en='';` +
-    `function pk(k){if(k===11){en=en.slice(0,-1);}else if(k===12){ch();}else if(en.length<4){en+=k;}ud();if(en.length===4)setTimeout(ch,200);}` +
-    `function ud(){var d=document.querySelectorAll('#pin-dots span');d.forEach(function(s,i){s.classList.toggle('filled',i<en.length);});}` +
-    `function ch(){` +
-      `if(en===PIN){` +
-        `sessionStorage.setItem('bk_auth','1');` +
-        `document.getElementById('pin-overlay').remove();` +
-        `setTimeout(function(){if(typeof loadState==='function')loadState();},0);` +
-      `}else{` +
-        `document.getElementById('pin-err').textContent='Verkeerde pincode';` +
-        `en='';ud();` +
-        `setTimeout(function(){document.getElementById('pin-err').textContent='';},2000);` +
-      `}` +
-    `}` +
-    `window.pk=pk;` +
-    `})();`;
+  const PIN_JS = `(function(){var PIN='3360';if(sessionStorage.getItem('bk_auth')==='1')return;var ov=document.createElement('div');ov.id='pin-overlay';ov.innerHTML='<div id="pin-box"><div id="pin-logo">&#127968;</div><div id="pin-title">Berkenhof</div><div id="pin-sub">Voer de pincode in</div><div id="pin-dots"><span></span><span></span><span></span><span></span></div><div id="pin-err"></div><div id="pin-grid"><button onclick="pk(1)">1</button><button onclick="pk(2)">2</button><button onclick="pk(3)">3</button><button onclick="pk(4)">4</button><button onclick="pk(5)">5</button><button onclick="pk(6)">6</button><button onclick="pk(7)">7</button><button onclick="pk(8)">8</button><button onclick="pk(9)">9</button><button onclick="pk(11)">&#9003;</button><button onclick="pk(0)">0</button><button onclick="pk(12)">OK</button></div></div>';ov.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:#1C2833;display:flex;align-items:center;justify-content:center;z-index:9999';document.head.insertAdjacentHTML('beforeend','<style>#pin-box{background:#253341;border-radius:20px;padding:36px 28px;text-align:center;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.4)}#pin-logo{font-size:48px;margin-bottom:8px}#pin-title{color:#fff;font-size:22px;font-weight:700;font-family:-apple-system,Arial,sans-serif}#pin-sub{color:rgba(255,255,255,.5);font-size:14px;margin:6px 0 20px;font-family:-apple-system,Arial,sans-serif}#pin-dots{display:flex;justify-content:center;gap:14px;margin-bottom:20px}#pin-dots span{width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.2);transition:background .2s}#pin-dots span.filled{background:#5DADE2}#pin-err{color:#E74C3C;font-size:13px;height:18px;margin-bottom:8px;font-family:-apple-system,Arial,sans-serif}#pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}#pin-grid button{background:rgba(255,255,255,.1);border:none;border-radius:12px;color:#fff;font-size:20px;font-weight:600;padding:16px;cursor:pointer;font-family:-apple-system,Arial,sans-serif;transition:background .15s}#pin-grid button:active{background:rgba(255,255,255,.25)}</style>');document.body.appendChild(ov);var en='';function pk(k){if(k===11){en=en.slice(0,-1);}else if(k===12){ch();}else if(en.length<4){en+=k;}ud();if(en.length===4)setTimeout(ch,200);}function ud(){var d=document.querySelectorAll('#pin-dots span');d.forEach(function(s,i){s.classList.toggle('filled',i<en.length);});}function ch(){if(en===PIN){sessionStorage.setItem('bk_auth','1');document.getElementById('pin-overlay').remove();}else{document.getElementById('pin-err').textContent='Verkeerde pincode';en='';ud();setTimeout(function(){document.getElementById('pin-err').textContent='';},2000);}}window.pk=pk;})();`;
 
   const html = `<!DOCTYPE html>
 <html lang="nl">
@@ -371,15 +238,11 @@ async function main() {
 </head>
 <body>
 <div class="ah">
-  <div class="ah-top">
-    <h1>&#127968; Berkenhof</h1>
-    <button class="rfb" onclick="loadState()">&#8635; Ververs</button>
-  </div>
+  <h1>&#127968; Berkenhof</h1>
   <p>Week ${weekLabel}</p>
   <div class="pt-wrap">${tabs}</div>
 </div>
 <div class="cnt">${personen}</div>
-<div id="si" class="si">&#8635; Synchroniseren&hellip;</div>
 <script>${PIN_JS}${JS}<\/script>
 </body>
 </html>`;
