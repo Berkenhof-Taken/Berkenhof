@@ -270,32 +270,32 @@ async function main() {
   const CSS = `*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}body{font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;background:#F0F2F5}.ah{background:#1C2833;color:#fff;padding:14px 20px 0;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.25)}.ah-top{display:flex;justify-content:space-between;align-items:center}.ah h1{font-size:19px;font-weight:700}.ah p{font-size:12px;opacity:.65;margin-top:2px}.rfb{background:rgba(255,255,255,.12);border:none;color:rgba(255,255,255,.8);font-size:13px;padding:5px 12px;border-radius:14px;cursor:pointer;white-space:nowrap}.rfb:active{background:rgba(255,255,255,.25)}.pt-wrap{display:flex;overflow-x:auto;scrollbar-width:none;margin-top:10px}.pt-wrap::-webkit-scrollbar{display:none}.pt{flex:1;min-width:70px;padding:9px 6px 7px;text-align:center;font-size:13px;font-weight:600;color:rgba(255,255,255,.5);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:all .2s;user-select:none}.pt.active{color:#fff;border-bottom-color:#fff}.cnt{max-width:700px;margin:0 auto;padding:14px 12px 80px}.pv{display:none}.pv.active{display:block}.pw{background:#fff;border-radius:12px;padding:12px 16px;margin-bottom:12px;box-shadow:0 2px 10px rgba(0,0,0,.1)}.pt-info{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;font-size:14px}.pb-bg{background:#E8E8E8;border-radius:6px;height:7px}.pb-fill{height:7px;border-radius:6px;transition:width .4s}.pc{font-size:13px;color:#666;font-weight:400}.dc{background:#fff;border-radius:12px;margin-bottom:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.1)}.dh{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;cursor:pointer;user-select:none}.dh h2{font-size:15px;font-weight:700;color:#fff}.db-badge{font-size:12px;color:rgba(255,255,255,.85);background:rgba(255,255,255,.2);border-radius:10px;padding:2px 9px}.collapsed{display:none}.sl{font-size:11px;font-weight:700;letter-spacing:.7px;padding:6px 16px;text-transform:uppercase}.ti-w{display:flex;align-items:flex-start;padding:11px 16px;gap:13px;cursor:pointer;border-bottom:1px solid #F5F5F5;min-height:50px;transition:background .15s}.ti-w:last-child{border-bottom:none}.ti-w.done{background:#F0FFF4}.ti-w.done .tn{color:#AAA;text-decoration:line-through}.cb{width:26px;height:26px;flex-shrink:0;margin-top:1px}.cb-c{fill:none;stroke:#CCC;stroke-width:2}.cb-b{fill:#CCC;opacity:0;transition:all .2s}.cb-k{fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity .2s}.ti-w.done .cb-c{stroke:#2ECC71}.ti-w.done .cb-b{fill:#2ECC71;opacity:1}.ti-w.done .cb-k{opacity:1}.tt{flex:1}.tn{font-size:15px;line-height:1.35;color:#1A1A1A}.ti{font-size:12px;color:#777;font-style:italic;margin-top:3px}.db,.ed{padding:14px 16px;font-size:13px;color:#BBB;font-style:italic}.rb{display:block;width:calc(100% - 24px);margin:4px 12px 0;padding:13px;border:none;border-radius:12px;font-size:15px;font-weight:600;color:#fff;cursor:pointer;opacity:.85}.rb:active{opacity:1}.si{position:fixed;bottom:22px;right:16px;background:rgba(28,40,51,.85);color:#fff;font-size:12px;padding:6px 14px;border-radius:20px;display:none;z-index:200;pointer-events:none;backdrop-filter:blur(4px)}.si.v{display:block}`;
 
   // ── Client-side JavaScript ────────────────────────────────────────
-  // NT en DB worden veilig ingebed via JSON.stringify
+  // Alle Notion-aanroepen lopen via de Cloudflare Worker (geen token in HTML)
+  const WORKER_URL = 'https://berkenhof-sync.ilse-vanderschueren.workers.dev';
   const JS = `var cP='Rita';` +
-    `var NT=${JSON.stringify(NOTION_TOKEN)};` +
-    `var DB=${JSON.stringify(DATABASE_ID)};` +
+    `var WK='${WORKER_URL}';` +
     `var VOLGORDE=${JSON.stringify(VOLGORDE)};` +
 
-    // TK: toggle taak + sync naar Notion
+    // TK: toggle taak + sync via Worker
     `function TK(el){el.classList.toggle('done');var d=el.classList.contains('done');var id=el.dataset.id;if(id)pN(id,d);UP(cP);UB(cP)}` +
 
-    // pN: PATCH Notion pagina met Voltooid-waarde
+    // pN: stuur vinkje via Worker naar Notion
     `function pN(pid,done){` +
       `var si=document.getElementById('si');` +
       `si.classList.add('v');clearTimeout(si._t);si._t=setTimeout(function(){si.classList.remove('v');},1800);` +
-      `fetch('https://api.notion.com/v1/pages/'+pid,{` +
-        `method:'PATCH',` +
-        `headers:{'Authorization':'Bearer '+NT,'Notion-Version':'2022-06-28','Content-Type':'application/json'},` +
-        `body:JSON.stringify({properties:{Voltooid:{checkbox:done}}})` +
+      `fetch(WK,{` +
+        `method:'POST',` +
+        `headers:{'Content-Type':'application/json'},` +
+        `body:JSON.stringify({action:'patch',pageId:pid,done:done})` +
       `}).catch(function(){});` +
     `}` +
 
-    // loadState: haal actuele Voltooid-status op uit Notion (voor beheerder-view)
+    // loadState: haal actuele Voltooid-status op via Worker (voor beheerder-view)
     `function loadState(){` +
-      `fetch('https://api.notion.com/v1/databases/'+DB+'/query',{` +
+      `fetch(WK,{` +
         `method:'POST',` +
-        `headers:{'Authorization':'Bearer '+NT,'Notion-Version':'2022-06-28','Content-Type':'application/json'},` +
-        `body:JSON.stringify({filter:{property:'Voltooid',checkbox:{equals:true}},page_size:100})` +
+        `headers:{'Content-Type':'application/json'},` +
+        `body:JSON.stringify({action:'state'})` +
       `}).then(function(r){return r.json();})` +
       `.then(function(data){` +
         `if(!data.results)return;` +
@@ -309,15 +309,17 @@ async function main() {
 
     `function toggleDay(h){h.nextElementSibling.classList.toggle('collapsed')}` +
 
-    // Reset: verwijder alle vinkjes voor persoon p, zet Notion ook terug
+    // Reset: laad eerst alle Notion-state op, wis dan alle vinkjes op alle apparaten
     `function Reset(p){` +
-      `document.querySelectorAll('#v-'+p+' .ti-w').forEach(function(t){` +
-        `if(t.classList.contains('done')){` +
-          `t.classList.remove('done');` +
-          `var id=t.dataset.id;if(id)pN(id,false);` +
-        `}` +
-      `});` +
-      `UP(p);UB(p);` +
+      `document.querySelectorAll('.ti-w').forEach(function(t){t.classList.remove('done');});` +
+      `VOLGORDE.forEach(function(n){if(document.getElementById('v-'+n)){UP(n);UB(n);}});` +
+      `fetch(WK,{method:'POST',headers:{'Content-Type':'application/json'},` +
+        `body:JSON.stringify({action:'state'})})` +
+        `.then(function(r){return r.json();})` +
+        `.then(function(data){` +
+          `(data.results||[]).forEach(function(r){if(r.id)pN(r.id,false);});` +
+        `})` +
+        `.catch(function(e){console.warn('Reset Notion fout:',e);});` +
     `}` +
 
     `function UP(p){var v=document.getElementById('v-'+p),a=v.querySelectorAll('.ti-w'),d=v.querySelectorAll('.ti-w.done'),pct=a.length?Math.round(d.length/a.length*100):0;document.getElementById('bar-'+p).style.width=pct+'%';document.getElementById('prog-'+p).textContent=d.length+'/'+a.length}` +
