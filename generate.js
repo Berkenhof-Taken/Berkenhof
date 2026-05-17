@@ -155,6 +155,16 @@ const FREQ_MINDER_DAN_WEKELIJKS = new Set([
 
 async function applyFeedback(pages) {
   if (!IS_RESET_DAY) return;
+
+  // VEILIGHEIDSCHECK: als geen enkele taak afgevinkt is bij de start,
+  // is er geen écht feedback-signaal (= app werkte niet of niemand werkte).
+  // Sla feedback-loop dan over om valse 'Gemist'-markeringen te vermijden.
+  const anyVoltooid = pages.some(p => p.properties.Voltooid && p.properties.Voltooid.checkbox === true);
+  if (!anyVoltooid) {
+    console.log('Feedback-loop overgeslagen: geen enkele taak afgevinkt vorige werkweek (lege of niet-werkende week).');
+    return;
+  }
+
   console.log(`Feedback-loop start (vorige werkweek = week ${prevWeek})`);
 
   // Stap 1: ruim alle eerdere Gemist-markeringen op
