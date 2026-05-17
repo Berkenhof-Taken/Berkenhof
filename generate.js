@@ -30,10 +30,10 @@ function getISOWeek(d) {
 
 // ── Feestdagen ───────────────────────────────────────────────────
 const FEESTDAGEN = new Set([
-  '2026-05-21','2026-06-01','2026-07-21','2026-08-15',
+  '2026-05-25','2026-07-21','2026-08-15',
   '2026-11-01','2026-11-11','2026-12-25',
-  '2027-01-01','2027-03-29','2027-05-01','2027-05-13',
-  '2027-05-24','2027-07-21','2027-08-15','2027-11-01',
+  '2027-01-01','2027-03-29','2027-05-01','2027-05-06',
+  '2027-05-17','2027-07-21','2027-08-15','2027-11-01',
   '2027-11-11','2027-12-25'
 ]);
 
@@ -55,7 +55,8 @@ function isActief(freq, start, targetWeek) {
 
 // ── Huidige werkweek berekenen ───────────────────────────────────
 const today = new Date(); today.setHours(0,0,0,0);
-const IS_MONDAY = today.getDay() === 1;
+// Reset-dag: zondagnamiddag (cron op zo 14u) of maandag (manuele trigger)
+const IS_RESET_DAY = today.getDay() === 0 || today.getDay() === 1;
 const dow   = today.getDay();
 let ma;
 if (dow === 0) { ma = new Date(today); ma.setDate(today.getDate() + 1); }
@@ -153,7 +154,7 @@ const FREQ_MINDER_DAN_WEKELIJKS = new Set([
 ]);
 
 async function applyFeedback(pages) {
-  if (!IS_MONDAY) return;
+  if (!IS_RESET_DAY) return;
   console.log(`Feedback-loop start (vorige werkweek = week ${prevWeek})`);
 
   // Stap 1: ruim alle eerdere Gemist-markeringen op
@@ -227,7 +228,7 @@ async function applyFeedback(pages) {
 
 // ── Maandag: reset alle Voltooid-vlaggen in Notion ───────────────
 async function resetWeekIfMonday(pages) {
-  if (!IS_MONDAY) return;
+  if (!IS_RESET_DAY) return;
   const toReset = pages.filter(p => p.properties.Voltooid && p.properties.Voltooid.checkbox === true);
   if (!toReset.length) {
     console.log('Maandag: alle Voltooid-vlaggen staan al op false.');
@@ -256,7 +257,7 @@ function parsePage(page) {
     freq:     p.frequentie?.select?.name || '',
     start:    p.Startdatum?.date?.start || '',
     inst:     (p.instructie?.rich_text || []).map(r => r.plain_text).join(''),
-    voltooid: IS_MONDAY ? false : (p.Voltooid?.checkbox || false),
+    voltooid: IS_RESET_DAY ? false : (p.Voltooid?.checkbox || false),
     gemist:   p.Gemist?.checkbox || false
   };
 }
