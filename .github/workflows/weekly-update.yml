@@ -2,7 +2,7 @@ name: Berkenhof Weeklijst Update
 
 on:
   schedule:
-    - cron: '0 6 * * 1-5'
+    - cron: '0 12 * * 0'  # Elke zondag om 14:00 Belgische zomertijd (12:00 UTC)
   workflow_dispatch:
 
 permissions:
