@@ -5,7 +5,8 @@
 //   • Feedback-loop op maandag:
 //       - Niet-afgevinkte WEKELIJKSE taken → Gemist=true (volgende keer rood/HOOFDLETTERS)
 //       - Niet-afgevinkte taken met frequentie < 1x/week → Startdatum +7 dagen
-//         (taak verschijnt deze nieuwe week opnieuw, daarna terug normale cyclus)
+//         ÉN Gemist=true (taak verschijnt deze nieuwe week ook rood/HOOFDLETTERS,
+//         daarna terug normale cyclus zonder rode markering)
 //       - Dagelijks / 2x/week / elke weekdag → geen aanpassing
 //   • Gemist-vlag wordt elke maandag eerst opgeruimd vóór nieuwe markeringen.
 
@@ -222,10 +223,17 @@ async function applyFeedback(pages) {
       const nieuw = new Date(oud); nieuw.setDate(oud.getDate() + 7);
       const nieuwStr = nieuw.toISOString().slice(0,10);
       try {
-        await notionPatch(page.id, { Startdatum: { date: { start: nieuwStr } } });
+        // Schuif startdatum +7 dagen EN markeer als Gemist
+        // (zodat de doorgeschoven taak deze nieuwe week ook rood/HOOFDLETTERS verschijnt)
+        await notionPatch(page.id, {
+          Startdatum: { date: { start: nieuwStr } },
+          Gemist: { checkbox: true }
+        });
         p.Startdatum.date.start = nieuwStr;
+        if (!p.Gemist) p.Gemist = { checkbox: true };
+        else p.Gemist.checkbox = true;
         nDoorgeschoven++;
-        console.log(`  Doorgeschoven (${freq}): ${naam} -> ${nieuwStr}`);
+        console.log(`  Doorgeschoven + gemist gemarkeerd (${freq}): ${naam} -> ${nieuwStr}`);
       } catch(e) {
         console.error(`  Startdatum-update fout ${page.id}: ${e.message}`);
       }
@@ -398,6 +406,10 @@ async function main() {
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Berkenhof Taken">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="generated-at" content="${new Date().toISOString()}">
 <title>Berkenhof Taken</title>
 <style>${CSS}</style>
 </head>
